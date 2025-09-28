@@ -58,12 +58,14 @@ export default function WalletPage() {
 
       if (error) {
         console.error('Error fetching transactions:', error)
+        setTransactions([]) // Set empty array on error
         return
       }
 
       setTransactions(data || [])
     } catch (error) {
       console.error('Error fetching transactions:', error)
+      setTransactions([]) // Set empty array on error
     } finally {
       setLoadingTransactions(false)
     }
@@ -147,9 +149,9 @@ export default function WalletPage() {
     switch (status) {
       case 'confirmed':
       case 'approved':
-        return <Badge variant="success">Confirmed</Badge>
+        return <Badge variant="default" className="bg-green-500 text-white">Confirmed</Badge>
       case 'pending':
-        return <Badge variant="pending">Pending</Badge>
+        return <Badge variant="secondary">Pending</Badge>
       case 'rejected':
         return <Badge variant="destructive">Rejected</Badge>
       default:
@@ -436,13 +438,13 @@ export default function WalletPage() {
                 <div className="text-center py-8">
                   <div className="animate-pulse">Loading transactions...</div>
                 </div>
-              ) : transactions.length === 0 ? (
+              ) : !transactions || transactions.length === 0 ? (
                 <div className="text-center py-8">
                   <p className="text-muted-foreground">No transactions yet</p>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {transactions.map((tx) => (
+                  {transactions && transactions.map((tx) => (
                     <div
                       key={tx.id}
                       className="flex items-center justify-between p-4 border rounded-lg"
