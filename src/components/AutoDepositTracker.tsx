@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useDepositPolling } from '@/hooks/useDepositPolling'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -42,7 +42,7 @@ export default function AutoDepositTracker({ userId, onDepositConfirmed }: AutoD
   const [refreshing, setRefreshing] = useState(false)
 
   // Use client-side polling for real-time updates
-  const { isPolling, lastCheck, error: pollingError, manualCheck } = useDepositPolling({
+  const { isPolling, lastCheck, manualCheck } = useDepositPolling({
     userId,
     enabled: true,
     interval: 30000, // Check every 30 seconds
@@ -56,7 +56,7 @@ export default function AutoDepositTracker({ userId, onDepositConfirmed }: AutoD
   })
 
   // Fetch deposits
-  const fetchDeposits = async () => {
+  const fetchDeposits = useCallback(async () => {
     try {
       const response = await fetch(`/api/deposits/status?userId=${userId}`)
       const data = await response.json()
@@ -77,7 +77,7 @@ export default function AutoDepositTracker({ userId, onDepositConfirmed }: AutoD
       setLoading(false)
       setRefreshing(false)
     }
-  }
+  }, [userId, onDepositConfirmed])
 
   // Manual refresh
   const handleRefresh = async () => {
@@ -128,7 +128,7 @@ export default function AutoDepositTracker({ userId, onDepositConfirmed }: AutoD
   // Get status badge
   const getStatusBadge = (deposit: DepositStatus) => {
     if (deposit.status === 'confirmed') {
-      return <Badge variant="success" className="flex items-center gap-1">
+      return <Badge variant="default" className="flex items-center gap-1 bg-green-500 text-white">
         <CheckCircle className="w-3 h-3" />
         Confirmed
       </Badge>
@@ -136,13 +136,13 @@ export default function AutoDepositTracker({ userId, onDepositConfirmed }: AutoD
     
     if (deposit.blockchain_status) {
       const { confirmations, requiredConfirmations } = deposit.blockchain_status
-      return <Badge variant="pending" className="flex items-center gap-1">
+      return <Badge variant="secondary" className="flex items-center gap-1">
         <Clock className="w-3 h-3" />
         {confirmations}/{requiredConfirmations} Confirmations
       </Badge>
     }
     
-    return <Badge variant="warning" className="flex items-center gap-1">
+    return <Badge variant="outline" className="flex items-center gap-1">
       <AlertCircle className="w-3 h-3" />
       Pending
     </Badge>
@@ -150,7 +150,9 @@ export default function AutoDepositTracker({ userId, onDepositConfirmed }: AutoD
 
   useEffect(() => {
     fetchDeposits()
-    
+  }, [fetchDeposits])
+
+  useEffect(() => {
     // Auto-refresh every 30 seconds for pending deposits
     const interval = setInterval(() => {
       const hasPendingDeposits = deposits.some(d => d.status === 'pending')
@@ -160,7 +162,7 @@ export default function AutoDepositTracker({ userId, onDepositConfirmed }: AutoD
     }, 30000)
 
     return () => clearInterval(interval)
-  }, [userId])
+  }, [deposits, fetchDeposits])
 
   if (loading) {
     return (
@@ -261,7 +263,7 @@ export default function AutoDepositTracker({ userId, onDepositConfirmed }: AutoD
                         <Button 
                           variant="ghost" 
                           size="sm" 
-                          onClick={() => copyToClipboard(deposit.tx_hash)}
+                          onClick={() => deposit.tx_hash && copyToClipboard(deposit.tx_hash)}
                         >
                           <Copy className="w-3 h-3" />
                         </Button>
