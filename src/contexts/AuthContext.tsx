@@ -27,15 +27,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Get initial session
     const getSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      setSession(session)
-      setUser(session?.user ?? null)
-      
-      if (session?.user) {
-        await fetchProfile(session.user.id)
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        setSession(session)
+        setUser(session?.user ?? null)
+        
+        if (session?.user) {
+          await fetchProfile(session.user.id)
+        }
+      } catch (error) {
+        console.error('Error getting session:', error)
+      } finally {
+        setLoading(false)
       }
-      
-      setLoading(false)
     }
 
     getSession()
@@ -43,21 +47,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        setSession(session)
-        setUser(session?.user ?? null)
-        
-        if (session?.user) {
-          await fetchProfile(session.user.id)
-        } else {
-          setProfile(null)
+        try {
+          setSession(session)
+          setUser(session?.user ?? null)
+          
+          if (session?.user) {
+            await fetchProfile(session.user.id)
+          } else {
+            setProfile(null)
+          }
+        } catch (error) {
+          console.error('Auth state change error:', error)
+        } finally {
+          setLoading(false)
         }
-        
-        setLoading(false)
       }
     )
 
-    return () => subscription.unsubscribe()
-  }, [])
+    // Auto sign-out when tab/window is closed
+    const handleBeforeUnload = () => {
+      // Only sign out if user is authenticated
+      if (user) {
+        supabase.auth.signOut()
+      }
+    }
+
+    // Auto sign-out on page visibility change (when tab becomes hidden)
+    const handleVisibilityChange = () => {
+      if (document.hidden && user) {
+        // Sign out when tab becomes hidden (user switched tabs or minimized)
+        setTimeout(() => {
+          if (document.hidden && user) {
+            supabase.auth.signOut()
+          }
+        }, 30000) // 30 seconds delay before auto sign-out
+      }
+    }
+
+    // Add event listeners for auto sign-out
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      subscription.unsubscribe()
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [user])
 
   const fetchProfile = async (userId: string) => {
     try {
@@ -158,15 +194,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
-      await supabase.auth.signOut()
-      // Clear local state
+      setLoading(true)
+      
+      // Sign out from Supabase
+      const { error } = await supabase.auth.signOut()
+      
+      if (error) {
+        console.error('Supabase signout error:', error)
+      }
+      
+      // Clear local state regardless of Supabase response
       setUser(null)
       setSession(null)
       setProfile(null)
-      // Redirect to landing page
-      window.location.href = '/'
+      
+      // Clear any stored tokens
+      localStorage.clear()
+      sessionStorage.clear()
+      
+      // Force redirect to landing page
+      window.location.replace('/')
     } catch (error) {
       console.error('Error signing out:', error)
+      // Force clear state and redirect even on error
+      setUser(null)
+      setSession(null)
+      setProfile(null)
+      localStorage.clear()
+      sessionStorage.clear()
+      window.location.replace('/')
+    } finally {
+      setLoading(false)
     }
   }
 

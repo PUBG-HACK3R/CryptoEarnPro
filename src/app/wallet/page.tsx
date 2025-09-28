@@ -1,7 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import { useAuth } from '@/contexts/AuthContext'
+import { useErrorHandler } from '@/components/ErrorBoundary'
 import Navbar from '@/components/layout/Navbar'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -10,6 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { formatCurrency, formatDate, CRYPTO_ADDRESSES, generateQRCodeUrl, CryptoType } from '@/lib/utils'
 import { createClientSupabase } from '@/lib/supabase'
 import AutoDepositTracker from '@/components/AutoDepositTracker'
+import LoadingSpinner, { PageLoader } from '@/components/LoadingSpinner'
 
 interface Transaction {
   id: string
@@ -24,6 +28,7 @@ interface Transaction {
 
 export default function WalletPage() {
   const { user, profile, loading } = useAuth()
+  const { captureError } = useErrorHandler()
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loadingTransactions, setLoadingTransactions] = useState(true)
   const [activeTab, setActiveTab] = useState<'deposit' | 'withdraw' | 'history'>('deposit')
@@ -65,6 +70,7 @@ export default function WalletPage() {
       setTransactions(data || [])
     } catch (error) {
       console.error('Error fetching transactions:', error)
+      captureError(error instanceof Error ? error : new Error('Failed to fetch transactions'))
       setTransactions([]) // Set empty array on error
     } finally {
       setLoadingTransactions(false)
@@ -73,34 +79,59 @@ export default function WalletPage() {
 
   const handleDeposit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!user || !depositAmount || !txHash) return
+    
+    // Validation
+    if (!user) {
+      alert('Please log in to submit a deposit.')
+      return
+    }
+    
+    if (!depositAmount || parseFloat(depositAmount) <= 0) {
+      alert('Please enter a valid deposit amount.')
+      return
+    }
+    
+    if (!txHash || txHash.trim().length < 10) {
+      alert('Please enter a valid transaction hash.')
+      return
+    }
 
     setSubmittingDeposit(true)
+    
     try {
-      const { error } = await supabase
+      // Add wallet address to the deposit
+      const walletAddress = CRYPTO_ADDRESSES[selectedCrypto]
+      
+      const { data, error } = await supabase
         .from('transactions')
         .insert({
           user_id: user.id,
           type: 'deposit',
           amount: parseFloat(depositAmount),
           crypto_type: selectedCrypto,
-          tx_hash: txHash,
+          tx_hash: txHash.trim(),
+          wallet_address: walletAddress,
           status: 'pending'
         })
+        .select()
 
       if (error) {
-        console.error('Error submitting deposit:', error)
-        alert('Error submitting deposit. Please try again.')
+        console.error('Database error submitting deposit:', error)
+        alert(`Error submitting deposit: ${error.message}. Please try again.`)
         return
       }
 
-      alert('Deposit submitted successfully! It will be reviewed by our team.')
-      setDepositAmount('')
-      setTxHash('')
-      fetchTransactions()
+      if (data && data.length > 0) {
+        alert('Deposit submitted successfully! It will be reviewed by our team.')
+        setDepositAmount('')
+        setTxHash('')
+        await fetchTransactions() // Refresh transactions
+      } else {
+        alert('Deposit submission failed. Please try again.')
+      }
     } catch (error) {
       console.error('Error submitting deposit:', error)
-      alert('Error submitting deposit. Please try again.')
+      alert('Network error submitting deposit. Please check your connection and try again.')
     } finally {
       setSubmittingDeposit(false)
     }
@@ -164,10 +195,7 @@ export default function WalletPage() {
       <div className="min-h-screen bg-background">
         <Navbar />
         <div className="flex items-center justify-center py-20">
-          <div className="animate-pulse text-center">
-            <div className="w-8 h-8 bg-primary rounded-full mx-auto mb-4"></div>
-            <p className="text-muted-foreground">Loading wallet...</p>
-          </div>
+          <LoadingSpinner size="lg" text="Loading wallet..." />
         </div>
       </div>
     )
