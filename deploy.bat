@@ -20,11 +20,10 @@ git commit -m "%commit_message%"
 
 echo.
 echo 4. Setting up GitHub repository...
-echo Please make sure you have created a repository named 'CryptoEarnPro' on GitHub
+echo Using your repository: PUBG-HACK3R/CryptoEarnPro
 echo.
 
-set /p github_username="Enter your GitHub username: "
-set github_url=https://github.com/%github_username%/CryptoEarnPro.git
+set github_url=git@github.com:PUBG-HACK3R/CryptoEarnPro.git
 
 echo.
 echo 5. Adding remote origin...
