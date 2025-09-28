@@ -9,12 +9,6 @@
       "maxDuration": 30
     }
   },
-  "crons": [
-    {
-      "path": "/api/deposits/monitor",
-      "schedule": "0 0 * * *"
-    }
-  ],
   "rewrites": [
     {
       "source": "/api/(.*)",
