@@ -41,11 +41,11 @@ export default function AutoDepositTracker({ userId, onDepositConfirmed }: AutoD
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
-  // Use client-side polling for real-time updates
-  const { isPolling, lastCheck, manualCheck } = useDepositPolling({
+  // Use client-side polling for real-time updates (disabled temporarily to prevent freezing)
+  const { isPolling, lastCheck, error: pollingError, manualCheck } = useDepositPolling({
     userId,
-    enabled: true,
-    interval: 30000, // Check every 30 seconds
+    enabled: false, // Temporarily disabled to prevent website freezing
+    interval: 60000, // Increased to 60 seconds to reduce load
     onDepositConfirmed: (deposit) => {
       if (onDepositConfirmed) {
         onDepositConfirmed(deposit)
@@ -58,10 +58,23 @@ export default function AutoDepositTracker({ userId, onDepositConfirmed }: AutoD
   // Fetch deposits
   const fetchDeposits = useCallback(async () => {
     try {
-      const response = await fetch(`/api/deposits/status?userId=${userId}`)
+      // Add timeout to prevent hanging requests
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 8000) // 8 second timeout
+
+      const response = await fetch(`/api/deposits/status?userId=${userId}`, {
+        signal: controller.signal
+      })
+      
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
       const data = await response.json()
       
-      if (data.success) {
+      if (data.success && Array.isArray(data.deposits)) {
         setDeposits(data.deposits)
         
         // Check for newly confirmed deposits
@@ -70,9 +83,14 @@ export default function AutoDepositTracker({ userId, onDepositConfirmed }: AutoD
             onDepositConfirmed(deposit)
           }
         })
+      } else {
+        // If no deposits or API returns empty, set empty array
+        setDeposits([])
       }
     } catch (error) {
       console.error('Error fetching deposits:', error)
+      // Set empty deposits on error to prevent UI issues
+      setDeposits([])
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -149,20 +167,23 @@ export default function AutoDepositTracker({ userId, onDepositConfirmed }: AutoD
   }
 
   useEffect(() => {
-    fetchDeposits()
-  }, [fetchDeposits])
+    if (userId) {
+      fetchDeposits()
+    }
+  }, [userId]) // Only depend on userId to prevent infinite loops
 
-  useEffect(() => {
-    // Auto-refresh every 30 seconds for pending deposits
-    const interval = setInterval(() => {
-      const hasPendingDeposits = deposits.some(d => d.status === 'pending')
-      if (hasPendingDeposits) {
-        fetchDeposits()
-      }
-    }, 30000)
+  // Disabled auto-refresh to prevent website freezing
+  // useEffect(() => {
+  //   // Auto-refresh every 30 seconds for pending deposits
+  //   const interval = setInterval(() => {
+  //     const hasPendingDeposits = deposits.some(d => d.status === 'pending')
+  //     if (hasPendingDeposits) {
+  //       fetchDeposits()
+  //     }
+  //   }, 30000)
 
-    return () => clearInterval(interval)
-  }, [deposits, fetchDeposits])
+  //   return () => clearInterval(interval)
+  // }, [deposits, fetchDeposits])
 
   if (loading) {
     return (
@@ -194,10 +215,15 @@ export default function AutoDepositTracker({ userId, onDepositConfirmed }: AutoD
               {isPolling && <RefreshCw className="w-4 h-4 animate-spin text-primary" />}
             </CardTitle>
             <CardDescription>
-              Real-time monitoring of your cryptocurrency deposits
+              Manual monitoring of your cryptocurrency deposits
               {lastCheck && (
                 <span className="block text-xs mt-1">
                   Last checked: {lastCheck.toLocaleTimeString()}
+                </span>
+              )}
+              {pollingError && (
+                <span className="block text-xs mt-1 text-red-500">
+                  Error: {pollingError}
                 </span>
               )}
             </CardDescription>

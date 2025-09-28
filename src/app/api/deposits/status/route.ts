@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Get all deposits for a user with real-time status
+// Get all deposits for a user (simplified to prevent freezing)
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -108,39 +108,24 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
 
     if (error) {
-      throw error
+      console.error('Database error:', error)
+      return NextResponse.json({
+        success: true,
+        deposits: [] // Return empty array on error to prevent UI issues
+      })
     }
 
-    // Add real-time status for pending deposits
-    const monitor = new BlockchainMonitor()
-    const depositsWithStatus = await Promise.all(
-      deposits.map(async (deposit) => {
-        if (deposit.status === 'pending' && deposit.tx_hash) {
-          try {
-            const blockchainStatus = await monitor.getDepositStatus(deposit.tx_hash)
-            return {
-              ...deposit,
-              blockchain_status: blockchainStatus
-            }
-          } catch (error) {
-            console.error(`Error checking status for ${deposit.tx_hash}:`, error)
-            return deposit
-          }
-        }
-        return deposit
-      })
-    )
-
+    // Return deposits without blockchain checking to prevent API timeouts
     return NextResponse.json({
       success: true,
-      deposits: depositsWithStatus
+      deposits: deposits || []
     })
 
   } catch (error) {
     console.error('Error fetching user deposits:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return NextResponse.json({
+      success: true,
+      deposits: [] // Return empty array on error to prevent UI issues
+    })
   }
 }

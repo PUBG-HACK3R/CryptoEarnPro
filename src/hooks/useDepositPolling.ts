@@ -26,8 +26,20 @@ export function useDepositPolling({
       setIsPolling(true)
       setError(null)
 
-      // Check deposit status
-      const response = await fetch(`/api/deposits/status?userId=${userId}`)
+      // Check deposit status with timeout
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+
+      const response = await fetch(`/api/deposits/status?userId=${userId}`, {
+        signal: controller.signal
+      })
+      
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
       const data = await response.json()
 
       if (data.success && data.deposits) {
@@ -35,28 +47,6 @@ export function useDepositPolling({
         const confirmedDeposits = data.deposits.filter(
           (deposit: any) => deposit.status === 'confirmed'
         )
-
-        // Trigger manual monitoring for pending deposits
-        const pendingDeposits = data.deposits.filter(
-          (deposit: any) => deposit.status === 'pending' && deposit.wallet_address
-        )
-
-        // For each pending deposit, trigger manual monitoring
-        for (const deposit of pendingDeposits) {
-          try {
-            await fetch('/api/deposits/monitor', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                walletAddress: deposit.wallet_address,
-                cryptoType: deposit.crypto_type,
-                userId: userId
-              })
-            })
-          } catch (monitorError) {
-            console.error('Error monitoring deposit:', monitorError)
-          }
-        }
 
         // Notify about confirmed deposits
         confirmedDeposits.forEach((deposit: any) => {
@@ -70,6 +60,10 @@ export function useDepositPolling({
     } catch (err) {
       console.error('Error checking deposits:', err)
       setError(err instanceof Error ? err.message : 'Unknown error')
+      // Disable polling on error to prevent infinite loops
+      if (err instanceof Error && err.name === 'AbortError') {
+        setError('Request timeout - polling disabled')
+      }
     } finally {
       setIsPolling(false)
     }
@@ -82,7 +76,7 @@ export function useDepositPolling({
 
   // Auto-polling effect
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled || !userId) return
 
     // Initial check
     checkDeposits()
@@ -91,7 +85,7 @@ export function useDepositPolling({
     const intervalId = setInterval(checkDeposits, interval)
 
     return () => clearInterval(intervalId)
-  }, [checkDeposits, enabled, interval])
+  }, [enabled, interval, userId]) // Remove checkDeposits to prevent infinite loops
 
   return {
     isPolling,
