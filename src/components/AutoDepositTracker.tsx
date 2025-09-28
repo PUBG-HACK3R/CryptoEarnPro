@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useDepositPolling } from '@/hooks/useDepositPolling'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -40,6 +41,20 @@ export default function AutoDepositTracker({ userId, onDepositConfirmed }: AutoD
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
+  // Use client-side polling for real-time updates
+  const { isPolling, lastCheck, error: pollingError, manualCheck } = useDepositPolling({
+    userId,
+    enabled: true,
+    interval: 30000, // Check every 30 seconds
+    onDepositConfirmed: (deposit) => {
+      if (onDepositConfirmed) {
+        onDepositConfirmed(deposit)
+      }
+      // Refresh deposits when one is confirmed
+      fetchDeposits()
+    }
+  })
+
   // Fetch deposits
   const fetchDeposits = async () => {
     try {
@@ -68,6 +83,7 @@ export default function AutoDepositTracker({ userId, onDepositConfirmed }: AutoD
   const handleRefresh = async () => {
     setRefreshing(true)
     await fetchDeposits()
+    manualCheck() // Also trigger manual deposit monitoring
   }
 
   // Check specific deposit status
@@ -173,9 +189,15 @@ export default function AutoDepositTracker({ userId, onDepositConfirmed }: AutoD
             <CardTitle className="flex items-center gap-2">
               <Wallet className="w-5 h-5" />
               Automatic Deposit Tracker
+              {isPolling && <RefreshCw className="w-4 h-4 animate-spin text-primary" />}
             </CardTitle>
             <CardDescription>
               Real-time monitoring of your cryptocurrency deposits
+              {lastCheck && (
+                <span className="block text-xs mt-1">
+                  Last checked: {lastCheck.toLocaleTimeString()}
+                </span>
+              )}
             </CardDescription>
           </div>
           <Button 
